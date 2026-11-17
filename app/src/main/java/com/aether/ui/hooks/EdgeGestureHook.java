@@ -102,8 +102,25 @@ public final class EdgeGestureHook {
                             XposedBridge.log("AETHER-EDGE: " + message);
                         }
 
-                    } else if (action == MotionEvent.ACTION_UP ||
-                            action == MotionEvent.ACTION_CANCEL ||
+                    } else if (action == MotionEvent.ACTION_UP) {
+                        Track track = TRACKS.get(view);
+
+                        if (track != null) {
+                            float dx = event.getX() - track.startX;
+                            float dy = event.getY() - track.startY;
+
+                            XposedBridge.log("AETHER-EDGE: END side=" +
+                                (track.side == LEFT ? "LEFT" : "RIGHT") +
+                                " dx=" + dx +
+                                " dy=" + dy +
+                                " needY=" + dp(view, 64f) +
+                                " vertical=" + (dy > Math.abs(dx) * 1.15f) +
+                                " reported=" + track.reported);
+                        }
+
+                        TRACKS.remove(view);
+
+                    } else if (action == MotionEvent.ACTION_CANCEL ||
                             action == MotionEvent.ACTION_POINTER_DOWN) {
                         TRACKS.remove(view);
                     }
