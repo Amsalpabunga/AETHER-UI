@@ -217,7 +217,7 @@ public final class AetherPanelWindow {
                 Settings.Panel.ACTION_INTERNET_CONNECTIVITY,
                 Settings.ACTION_WIFI_SETTINGS,
                 "Bluetooth", "Bluetooth settings",
-                Settings.Panel.ACTION_BLUETOOTH,
+                Settings.ACTION_BLUETOOTH_SETTINGS,
                 Settings.ACTION_BLUETOOTH_SETTINGS);
 
             addTileRow(c, card,
