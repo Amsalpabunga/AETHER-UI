@@ -1,6 +1,5 @@
 package com.aether.ui.hooks;
 
-import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
 
@@ -12,7 +11,6 @@ import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
 
 public final class EdgeGestureHook {
-    private static final String TAG = "AETHER-EDGE";
     private static final int LEFT = 1;
     private static final int RIGHT = 2;
 
@@ -27,107 +25,138 @@ public final class EdgeGestureHook {
     }
 
     private static float dp(View view, float value) {
-        return value * view.getResources().getDisplayMetrics().density;
+        return value * view.getResources()
+            .getDisplayMetrics().density;
     }
 
     private EdgeGestureHook() {}
 
+    private static void observe(View view, MotionEvent event, String source) {
+        int action = event.getActionMasked();
+
+        if (action == MotionEvent.ACTION_DOWN) {
+            // onTouchEvent dapat menerima DOWN yang sama.
+            if ("onTouchEvent".equals(source) &&
+                    TRACKS.containsKey(view)) {
+                return;
+            }
+
+            float x = event.getX();
+            float y = event.getY();
+
+            Track track = new Track();
+            float edge = dp(view, 112f);
+            float top = dp(view, 72f);
+
+            if (y <= top && x <= edge) {
+                track.side = LEFT;
+            } else if (y <= top &&
+                    x >= view.getWidth() - edge) {
+                track.side = RIGHT;
+            }
+
+            if (track.side != 0) {
+                track.startX = x;
+                track.startY = y;
+                TRACKS.put(view, track);
+
+                XposedBridge.log("AETHER-EDGE: TRACK " +
+                    (track.side == LEFT ? "LEFT" : "RIGHT") +
+                    " source=" + source);
+            } else {
+                TRACKS.remove(view);
+            }
+
+        } else if (action == MotionEvent.ACTION_MOVE) {
+            Track track = TRACKS.get(view);
+
+            if (track == null || track.reported ||
+                    event.getPointerCount() != 1) {
+                return;
+            }
+
+            float dx = event.getX() - track.startX;
+            float dy = event.getY() - track.startY;
+
+            if (!track.debugMoved) {
+                track.debugMoved = true;
+                XposedBridge.log("AETHER-EDGE: MOVE source=" +
+                    source);
+            }
+
+            if (dy >= dp(view, 64f) &&
+                    dy > Math.abs(dx) * 1.15f) {
+                track.reported = true;
+
+                XposedBridge.log("AETHER-EDGE: GESTURE_" +
+                    (track.side == LEFT ? "LEFT" : "RIGHT") +
+                    " dx=" + dx +
+                    " dy=" + dy +
+                    " source=" + source);
+            }
+
+        } else if (action == MotionEvent.ACTION_UP) {
+            Track track = TRACKS.get(view);
+
+            if (track != null) {
+                float dx = event.getX() - track.startX;
+                float dy = event.getY() - track.startY;
+
+                XposedBridge.log("AETHER-EDGE: END side=" +
+                    (track.side == LEFT ? "LEFT" : "RIGHT") +
+                    " dx=" + dx +
+                    " dy=" + dy +
+                    " reported=" + track.reported +
+                    " source=" + source);
+            }
+
+            TRACKS.remove(view);
+
+        } else if (action == MotionEvent.ACTION_CANCEL ||
+                action == MotionEvent.ACTION_POINTER_DOWN) {
+            Track track = TRACKS.get(view);
+
+            if (track != null) {
+                XposedBridge.log("AETHER-EDGE: CANCEL side=" +
+                    (track.side == LEFT ? "LEFT" : "RIGHT") +
+                    " action=" + action +
+                    " source=" + source);
+            }
+
+            TRACKS.remove(view);
+        }
+    }
+
     public static void install(ClassLoader loader) {
+        XC_MethodHook observer = new XC_MethodHook() {
+            @Override
+            protected void beforeHookedMethod(MethodHookParam param) {
+                observe(
+                    (View) param.thisObject,
+                    (MotionEvent) param.args[0],
+                    param.method.getName()
+                );
+            }
+        };
+
         XposedHelpers.findAndHookMethod(
             "com.android.systemui.shade.NotificationShadeWindowView",
             loader,
             "onInterceptTouchEvent",
             MotionEvent.class,
-            new XC_MethodHook() {
-                @Override
-                protected void beforeHookedMethod(MethodHookParam param) {
-                    View view = (View) param.thisObject;
-                    MotionEvent event = (MotionEvent) param.args[0];
-                    int action = event.getActionMasked();
-
-                    if (action == MotionEvent.ACTION_DOWN) {
-                        float x = event.getX();
-                        float y = event.getY();
-
-                        if (y <= dp(view, 180f)) {
-                            XposedBridge.log("AETHER-EDGE: DOWN x=" + x +
-                                " y=" + y + " width=" + view.getWidth());
-                        }
-
-                        float edge = dp(view, 112f);
-                        float top = dp(view, 72f);
-
-                        Track track = new Track();
-
-                        if (y <= top && x <= edge) {
-                            track.side = LEFT;
-                        } else if (y <= top && x >= view.getWidth() - edge) {
-                            track.side = RIGHT;
-                        }
-
-                        if (track.side != 0) {
-                            track.startX = x;
-                            track.startY = y;
-                            TRACKS.put(view, track);
-
-                            XposedBridge.log("AETHER-EDGE: TRACK side=" +
-                                (track.side == LEFT ? "LEFT" : "RIGHT"));
-                        } else {
-                            TRACKS.remove(view);
-                        }
-
-                    } else if (action == MotionEvent.ACTION_MOVE) {
-                        Track track = TRACKS.get(view);
-
-                        if (track == null || track.reported ||
-                                event.getPointerCount() != 1) {
-                            return;
-                        }
-
-                        if (!track.debugMoved) {
-                            track.debugMoved = true;
-                            XposedBridge.log("AETHER-EDGE: MOVE received");
-                        }
-
-                        float dx = event.getX() - track.startX;
-                        float dy = event.getY() - track.startY;
-
-                        if (dy >= dp(view, 64f) &&
-                                dy > Math.abs(dx) * 1.15f) {
-                            track.reported = true;
-                            String message = track.side == LEFT
-                                ? "GESTURE_LEFT"
-                                : "GESTURE_RIGHT";
-                            Log.i(TAG, message);
-                            XposedBridge.log("AETHER-EDGE: " + message);
-                        }
-
-                    } else if (action == MotionEvent.ACTION_UP) {
-                        Track track = TRACKS.get(view);
-
-                        if (track != null) {
-                            float dx = event.getX() - track.startX;
-                            float dy = event.getY() - track.startY;
-
-                            XposedBridge.log("AETHER-EDGE: END side=" +
-                                (track.side == LEFT ? "LEFT" : "RIGHT") +
-                                " dx=" + dx +
-                                " dy=" + dy +
-                                " needY=" + dp(view, 64f) +
-                                " vertical=" + (dy > Math.abs(dx) * 1.15f) +
-                                " reported=" + track.reported);
-                        }
-
-                        TRACKS.remove(view);
-
-                    } else if (action == MotionEvent.ACTION_CANCEL ||
-                            action == MotionEvent.ACTION_POINTER_DOWN) {
-                        TRACKS.remove(view);
-                    }
-                }
-            }
+            observer
         );
 
-        XposedBridge.log("AETHER UI: edge gesture detector installed");
+        XposedHelpers.findAndHookMethod(
+            "com.android.systemui.shade.NotificationShadeWindowView",
+            loader,
+            "onTouchEvent",
+            MotionEvent.class,
+            observer
+        );
+
+        XposedBridge.log(
+            "AETHER UI: edge gesture observers installed"
+        );
     }
 }
