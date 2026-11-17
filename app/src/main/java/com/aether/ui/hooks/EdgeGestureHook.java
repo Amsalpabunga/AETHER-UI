@@ -16,7 +16,6 @@ public final class EdgeGestureHook {
     private static final int LEFT = 1;
     private static final int RIGHT = 2;
 
-    // Touch callbacks run on the view thread; each SystemUI window has its own track.
     private static final Map<View, Track> TRACKS = new WeakHashMap<>();
 
     private static final class Track {
@@ -24,6 +23,7 @@ public final class EdgeGestureHook {
         float startY;
         int side;
         boolean reported;
+        boolean debugMoved;
     }
 
     private static float dp(View view, float value) {
@@ -48,6 +48,12 @@ public final class EdgeGestureHook {
                     if (action == MotionEvent.ACTION_DOWN) {
                         float x = event.getX();
                         float y = event.getY();
+
+                        if (y <= dp(view, 180f)) {
+                            XposedBridge.log("AETHER-EDGE: DOWN x=" + x +
+                                " y=" + y + " width=" + view.getWidth());
+                        }
+
                         float edge = dp(view, 112f);
                         float top = dp(view, 72f);
 
@@ -63,6 +69,9 @@ public final class EdgeGestureHook {
                             track.startX = x;
                             track.startY = y;
                             TRACKS.put(view, track);
+
+                            XposedBridge.log("AETHER-EDGE: TRACK side=" +
+                                (track.side == LEFT ? "LEFT" : "RIGHT"));
                         } else {
                             TRACKS.remove(view);
                         }
@@ -73,6 +82,11 @@ public final class EdgeGestureHook {
                         if (track == null || track.reported ||
                                 event.getPointerCount() != 1) {
                             return;
+                        }
+
+                        if (!track.debugMoved) {
+                            track.debugMoved = true;
+                            XposedBridge.log("AETHER-EDGE: MOVE received");
                         }
 
                         float dx = event.getX() - track.startX;
